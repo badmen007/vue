@@ -14,10 +14,12 @@
                 age: 20,
                 address: {
                     location: '新疆'
-                }
+                },
+                ary: [1,2,3,{hobby: 'eat'}]
             }
         })
-        console.log(vm.address)
+        vm.ary.push({name: 'wsr'});
+        console.log(vm);
     </script>
 </body>
 </html>

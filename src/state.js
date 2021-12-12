@@ -26,7 +26,7 @@ function initData(vm) {
 
     observe(data);
 
-    for(let key in data) {
+    for(let key in data) { // 为了外层取值的方便 所以多加了一层劫持
         proxy(vm,'_data',key)
     }
 }

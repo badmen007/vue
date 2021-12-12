@@ -42,11 +42,59 @@
     return Constructor;
   }
 
+  var oldArrayProto = Array.prototype;
+  var newArrayProto = Object.create(oldArrayProto);
+  var methods = ['push', 'pop', 'shift', 'unshift', 'sort', 'reverse', 'splice'];
+  methods.forEach(function (method) {
+    newArrayProto[method] = function () {
+      var _oldArrayProto$method;
+
+      for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
+        args[_key] = arguments[_key];
+      }
+
+      // 重写了数组的方法
+      var result = (_oldArrayProto$method = oldArrayProto[method]).call.apply(_oldArrayProto$method, [this].concat(args)); // 内部调用了原来的方法
+      // 此外还要对新增的内容进行观测
+
+
+      var inserted;
+
+      switch (method) {
+        case 'push':
+        case 'unshift':
+          inserted = args;
+          break;
+
+        case 'splice':
+          inserted = args.slice(2);
+          break;
+      }
+
+      if (inserted) {
+        this.__ob__.observeArray(inserted);
+      }
+
+      return result;
+    };
+  });
+
   var Observer = /*#__PURE__*/function () {
     function Observer(data) {
       _classCallCheck(this, Observer);
 
-      this.walk(data);
+      Object.defineProperty(data, '__ob__', {
+        value: this,
+        enumerable: false // 属性不可枚举
+
+      });
+
+      if (Array.isArray(data)) {
+        data.__proto__ = newArrayProto;
+        this.observeArray(data);
+      } else {
+        this.walk(data);
+      }
     }
 
     _createClass(Observer, [{
@@ -54,6 +102,13 @@
       value: function walk(data) {
         Object.keys(data).forEach(function (key) {
           return defineReactive(data, key, data[key]);
+        });
+      }
+    }, {
+      key: "observeArray",
+      value: function observeArray(data) {
+        data.forEach(function (item) {
+          return observe(item);
         });
       }
     }]);
@@ -77,7 +132,13 @@
 
   function observe(data) {
     if (_typeof(data) !== 'object' || data == null) {
+      //只劫持对象
       return;
+    }
+
+    if (data.__ob__ instanceof Observer) {
+      // 被劫持了 就不需要再走进去了
+      return data.__ob__;
     }
 
     return new Observer(data);
@@ -109,6 +170,7 @@
     observe(data);
 
     for (var key in data) {
+      // 为了外层取值的方便 所以多加了一层劫持
       proxy(vm, '_data', key);
     }
   }
