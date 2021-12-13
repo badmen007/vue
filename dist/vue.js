@@ -372,6 +372,7 @@
   function patchProps(el, props) {
     for (var key in props) {
       if (key === 'style') {
+        // style{color:'red'}
         for (var styleName in props.style) {
           el.style[styleName] = props.style[styleName];
         }
@@ -381,23 +382,25 @@
     }
   }
 
-  function patch(oldNode, vnode) {
-    var isRealElement = oldNode.nodeType;
+  function patch(oldVNode, vnode) {
+    // 写的是初渲染流程 
+    var isRealElement = oldVNode.nodeType;
 
     if (isRealElement) {
-      var elm = oldNode; // 拿到真实元素
+      // 初次渲染的时候  
+      var elm = oldVNode; // 获取真实元素
 
       var parentElm = elm.parentNode; // 拿到父元素
 
       var newElm = createElm(vnode);
       parentElm.insertBefore(newElm, elm.nextSibling);
-      parentElm.removeChild(elm); // 删除老的节点
+      parentElm.removeChild(elm); // 删除老节点
 
       return newElm;
     }
   }
 
-  function lifeCycle(Vue) {
+  function initLifeCycle(Vue) {
     Vue.prototype._update = function (vnode) {
       // 将vnode转化成真实dom
       var vm = this;
@@ -422,14 +425,22 @@
     };
 
     Vue.prototype._render = function () {
-      return this.$options.render.call(this);
+      // 当渲染的时候会去实例中取值，我们就可以将属性和视图绑定在一起
+      return this.$options.render.call(this); // 通过ast语法转义后生成的render方法
     };
   }
   function mountComponent(vm, el) {
+    // 这里的el 是通过querySelector处理过的
     vm.$el = el; // 1.调用render方法产生虚拟节点 虚拟DOM
 
-    vm._update(vm._render());
-  }
+    vm._update(vm._render()); // vm.$options.render() 虚拟节点
+    // 2.根据虚拟DOM产生真实DOM 
+    // 3.插入到el元素中
+
+  } // vue核心流程 1） 创造了响应式数据  2） 模板转换成ast语法树  
+  // 3) 将ast语法树转换了render函数 4) 后续每次数据更新可以只执行render函数 (无需再次执行ast转化的过程)
+  // render函数会去产生虚拟节点（使用响应式数据）
+  // 根据生成的虚拟节点创造真实的DOM
 
   var oldArrayProto = Array.prototype;
   var newArrayProto = Object.create(oldArrayProto);
@@ -606,7 +617,7 @@
   }
 
   initMixin(Vue);
-  lifeCycle(Vue);
+  initLifeCycle(Vue);
 
   return Vue;
 
