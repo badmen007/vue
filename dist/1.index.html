@@ -9,6 +9,7 @@
     <script src="vue.js"></script>
     <script>
         let vm = new Vue({
+            el:'#app',
             data: {
                 name: 'xz',
                 age: 20,
@@ -18,7 +19,6 @@
                 ary: [1,2,3,{hobby: 'eat'}]
             }
         })
-        vm.ary.push({name: 'wsr'});
         console.log(vm);
     </script>
 </body>

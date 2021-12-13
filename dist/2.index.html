@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <div id="app" style='color:red;background:skyblue'>{{name}}hello{{age}}</div>
+    <script src="vue.js"></script>
+    <script>
+        let vm = new Vue({
+            el:'#app',
+            data: {
+                name: 'xz',
+                age: 20,
+                address: {
+                    location: '新疆'
+                },
+            }
+        })
+    </script>
+</body>
+</html>
