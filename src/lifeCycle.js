@@ -1,5 +1,5 @@
 import { createElementVNode, createTextVNode } from "./vdom"
-
+import Watcher from './observe/watcher';
 
 function createElm(vnode){
     let {tag,data,children,text} = vnode;
@@ -26,7 +26,7 @@ function patchProps(el,props){
     }
 }
 function patch(oldVNode,vnode){
-    // 写的是初渲染流程 
+    // 写的是初渲染流程 判断是不是第一次渲染
     const isRealElement = oldVNode.nodeType;
     if(isRealElement){   // 初次渲染的时候  
         const elm = oldVNode; // 获取真实元素
@@ -75,7 +75,14 @@ export function mountComponent(vm,el){ // 这里的el 是通过querySelector处�
 
     // 1.调用render方法产生虚拟节点 虚拟DOM
 
-    vm._update(vm._render()); // vm.$options.render() 虚拟节点
+
+    
+    const updateComponent = () => {
+        vm._update(vm._render()) // vm.$options.render() 虚拟节点
+    }
+
+    const watcher = new Watcher(vm, updateComponent, true);
+    console.log(watcher);
 
     // 2.根据虚拟DOM产生真实DOM 
 

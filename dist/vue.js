@@ -348,6 +348,160 @@
     };
   }
 
+  var id$1 = 0;
+
+  var Dep = /*#__PURE__*/function () {
+    function Dep() {
+      _classCallCheck(this, Dep);
+
+      this.id = id$1++;
+      this.subs = [];
+    }
+
+    _createClass(Dep, [{
+      key: "depend",
+      value: function depend() {
+        Dep.target.addDep(this);
+      }
+    }, {
+      key: "addSub",
+      value: function addSub(watcher) {
+        this.subs.push(watcher);
+      }
+    }, {
+      key: "notify",
+      value: function notify() {
+        this.subs.forEach(function (watcher) {
+          return watcher.update();
+        });
+      }
+    }]);
+
+    return Dep;
+  }();
+
+  Dep.target = null;
+
+  var id = 0;
+
+  var Watcher = /*#__PURE__*/function () {
+    function Watcher(vm, fn, options) {
+      _classCallCheck(this, Watcher);
+
+      this.id = id++;
+      this.renderWatcher = options;
+      this.getter = fn;
+      this.deps = [];
+      this.depsId = new Set();
+      this.get();
+    }
+
+    _createClass(Watcher, [{
+      key: "get",
+      value: function get() {
+        Dep.target = this;
+        this.getter();
+      }
+    }, {
+      key: "addDep",
+      value: function addDep(dep) {
+        var id = dep.id;
+
+        if (!this.depsId.has(id)) {
+          this.deps.push(dep);
+          this.depsId.add(id);
+          dep.addSub(this);
+        }
+      }
+    }, {
+      key: "update",
+      value: function update() {
+        queueWatcher(this); //this.get(); // 重新渲染
+      }
+    }, {
+      key: "run",
+      value: function run() {
+        this.get();
+      }
+    }]);
+
+    return Watcher;
+  }();
+
+  function flushScheduleQueue() {
+    var flushQueue = queue.slice(0);
+    queue.length = 0;
+    pending = true;
+    has = {};
+    flushQueue.forEach(function (q) {
+      return q.run();
+    });
+  }
+
+  var queue = [];
+  var has = {};
+  var pending = false;
+
+  function queueWatcher(watcher) {
+    var id = watcher.id;
+
+    if (!has[id]) {
+      queue.push(watcher);
+      has[id] = true; //不管我们update执行多少次，但是最终都只执行一次
+
+      if (!pending) {
+        nextTick(flushScheduleQueue);
+      }
+    }
+  }
+
+  function flushCallbacks() {
+    var cbs = callbacks.slice(0);
+    waiting = false;
+    callbacks = [];
+    cbs.forEach(function (cb) {
+      return cb();
+    });
+  }
+
+  var timerFunc;
+
+  if (Promise) {
+    timerFunc = function timerFunc() {
+      Promise.resolve().then(flushCallbacks);
+    };
+  } else if (MutationObserver) {
+    var observer = new MutationObserver(flushCallbacks); // 传入的回调是异步执行的
+
+    var textNode = document.createTextNode(1);
+    observer.observe(textNode, {
+      characterData: true
+    });
+
+    timerFunc = function timerFunc() {
+      textNode.textContent = 2;
+    };
+  } else if (setImmediate) {
+    timerFunc = function timerFunc() {
+      setImmediate(flushCallbacks);
+    };
+  } else {
+    timerFunc = function timerFunc() {
+      setTimeout(flushCallbacks);
+    };
+  }
+
+  var callbacks = [];
+  var waiting = false;
+  function nextTick(cb) {
+    callbacks.push(cb);
+
+    if (!waiting) {
+      timerFunc();
+      waiting = true;
+    }
+  }
+
   function createElm(vnode) {
     var tag = vnode.tag,
         data = vnode.data,
@@ -383,7 +537,7 @@
   }
 
   function patch(oldVNode, vnode) {
-    // 写的是初渲染流程 
+    // 写的是初渲染流程 判断是不是第一次渲染
     var isRealElement = oldVNode.nodeType;
 
     if (isRealElement) {
@@ -433,10 +587,14 @@
     // 这里的el 是通过querySelector处理过的
     vm.$el = el; // 1.调用render方法产生虚拟节点 虚拟DOM
 
-    vm._update(vm._render()); // vm.$options.render() 虚拟节点
-    // 2.根据虚拟DOM产生真实DOM 
-    // 3.插入到el元素中
+    var updateComponent = function updateComponent() {
+      vm._update(vm._render()); // vm.$options.render() 虚拟节点
 
+    };
+
+    var watcher = new Watcher(vm, updateComponent, true);
+    console.log(watcher); // 2.根据虚拟DOM产生真实DOM 
+    // 3.插入到el元素中
   } // vue核心流程 1） 创造了响应式数据  2） 模板转换成ast语法树  
   // 3) 将ast语法树转换了render函数 4) 后续每次数据更新可以只执行render函数 (无需再次执行ast转化的过程)
   // render函数会去产生虚拟节点（使用响应式数据）
@@ -519,13 +677,20 @@
   function defineReactive(data, key, value) {
     observe(value); // 递归保证嵌套层级比较深的话  保证里面的属性能有响应式
 
+    var dep = new Dep();
     Object.defineProperty(data, key, {
       get: function get() {
+        if (Dep.target) {
+          dep.depend();
+        }
+
         return value;
       },
       set: function set(newValue) {
         if (value == newValue) return;
         value = newValue;
+        observe(newValue);
+        dep.notify();
       }
     });
   }
@@ -612,12 +777,66 @@
     };
   }
 
+  var LIFECYCLE = ['beforeCreate', 'created'];
+  LIFECYCLE.forEach(function (hook) {
+    //  {} {created:function(){}}   => {created:[fn]}
+    // {created:[fn]}  {created:function(){}} => {created:[fn,fn]}
+    starts[hook] = function (p, c) {
+      if (c) {
+        if (p) {
+          return p.concat(c);
+        } else {
+          return [c];
+        }
+      } else {
+        return p; // 如果儿子没有则用父亲即可
+      }
+    };
+  });
+  function mergeOptions(parent, child) {
+    var options = {};
+
+    for (var key in parent) {
+      mergeField(key);
+    }
+
+    for (var _key in child) {
+      if (!child.hasOwnProperty(_key)) {
+        mergeField(_key);
+      }
+    }
+
+    function mergeField(key) {
+      //策略模式
+      if (starts[key]) {
+        options[key] = starts[key](parent[key], child[key]);
+      } else {
+        //如果不在策略中则以儿子为主
+        options[key] = child[key] || parent[key];
+      }
+    }
+
+    return options;
+  }
+
+  function initGlobalAPI(Vue) {
+    Vue.options = {};
+
+    Vue.mixin = function mixin(mixin) {
+      this.options = mergeOptions(this.options, mixin); // 就是属性的合并
+
+      return this;
+    };
+  }
+
   function Vue(options) {
     this._init(options);
   }
 
+  Vue.prototype.$nextTick = nextTick;
   initMixin(Vue);
   initLifeCycle(Vue);
+  initGlobalAPI(Vue);
 
   return Vue;
 
