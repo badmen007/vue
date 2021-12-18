@@ -394,17 +394,28 @@
   var id = 0;
 
   var Watcher = /*#__PURE__*/function () {
-    function Watcher(vm, fn, options) {
+    function Watcher(vm, exprOrFn, options, cb) {
       _classCallCheck(this, Watcher);
 
       this.id = id++;
       this.renderWatcher = options;
-      this.getter = fn;
+
+      if (typeof exprOrFn === 'string') {
+        this.getter = function () {
+          return vm[exprOrFn];
+        };
+      } else {
+        this.getter = exprOrFn; // getter意味着调用这个函数可以发生取值操作
+      }
+
       this.vm = vm;
+      this.cb = cb;
       this.deps = [];
       this.depsId = new Set();
       this.lazy = options.lazy;
       this.dirty = this.lazy;
+      this.user = options.user; // 检测是不是用户watcher
+
       this.value = this.lazy ? undefined : this.get();
     }
 
@@ -456,7 +467,12 @@
     }, {
       key: "run",
       value: function run() {
-        this.get();
+        var oldValue = this.value;
+        var newValue = this.get();
+
+        if (this.user) {
+          this.cb.call(this.vm, newValue, oldValue);
+        }
       }
     }]);
 
@@ -764,6 +780,32 @@
     if (opts.computed) {
       initComputed(vm);
     }
+
+    if (opts.watch) {
+      initWatch(vm);
+    }
+  }
+
+  function initWatch(vm) {
+    var watch = vm.$options.watch;
+
+    for (var key in watch) {
+      var handler = watch[key];
+
+      if (Array.isArray(handler)) {
+        createWatcher(vm, key, handler[i]);
+      } else {
+        createWatcher(vm, key, handler);
+      }
+    }
+  }
+
+  function createWatcher(vm, key, handler) {
+    if (typeof handler === 'string') {
+      handler = vm[handler];
+    }
+
+    return vm.$watch(key, handler);
   }
 
   function proxy(vm, target, key) {
@@ -935,6 +977,12 @@
   initMixin(Vue);
   initLifeCycle(Vue);
   initGlobalAPI(Vue);
+
+  Vue.prototype.$watch = function (exprOrFn, cb) {
+    new Watcher(this, exprOrFn, {
+      user: true
+    }, cb);
+  };
 
   return Vue;
 
