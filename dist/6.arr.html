@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <div id="app" >
+        {{arr}}
+    </div>
+    <script src="vue.js"></script>
+    <!-- <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.14/vue.js"></script> -->
+    <script>
+        let vm = new Vue({
+            el: '#app',
+            data: {
+                arr: [1,2,3, {a:1},['a', 'b']],
+                a:{a:1}
+            },
+        })
+        // vm.arr[0] = 100;  //监控不到 只是重写了数组的方法
+        // vm.arr.length = 100  //没有监控长度变化 
+
+        //这里要注意的是 你改变的不是arr属性 而是arr属性的数组对象
+        setTimeout(() => {
+            // vm.arr.push(100,100,100)
+
+            //vm.a.b = 100;
+            //vm.a.__ob__.dep.notify();  // $set的原理
+
+            vm.arr[4].push('c')  //外层的数组有依赖收集  但是里层的数组没有依赖收集 所以要递归进行依赖收集
+        },1000)
+        // vm.a.a = 100  // 能够触发视图更新
+        //vm.a.b = 1;  //这样就不能更新  只是对已经存在的属性进行劫持  那么怎么办呢  给对象和数组都增加 dep
+    </script>
+</body>
+
+</html>
