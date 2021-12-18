@@ -381,6 +381,15 @@
   }();
 
   Dep.target = null;
+  var stack = [];
+  function pushTarget(watcher) {
+    stack.push(watcher);
+    Dep.target = watcher;
+  }
+  function popTarget() {
+    stack.pop();
+    Dep.target = stack[stack.length - 1];
+  }
 
   var id = 0;
 
@@ -391,16 +400,28 @@
       this.id = id++;
       this.renderWatcher = options;
       this.getter = fn;
+      this.vm = vm;
       this.deps = [];
       this.depsId = new Set();
-      this.get();
+      this.lazy = options.lazy;
+      this.dirty = this.lazy;
+      this.value = this.lazy ? undefined : this.get();
     }
 
     _createClass(Watcher, [{
+      key: "evaluate",
+      value: function evaluate() {
+        this.value = this.get();
+        this.dirty = false;
+      }
+    }, {
       key: "get",
       value: function get() {
-        Dep.target = this;
-        this.getter();
+        pushTarget(this);
+        var value = this.getter.call(this.vm); // 为了保证this的指向
+
+        popTarget();
+        return value;
       }
     }, {
       key: "addDep",
@@ -412,11 +433,25 @@
           this.depsId.add(id);
           dep.addSub(this);
         }
+      } // 让属性去收集watcher
+
+    }, {
+      key: "depend",
+      value: function depend() {
+        var i = this.deps.length;
+
+        while (i--) {
+          this.deps[i].depend();
+        }
       }
     }, {
       key: "update",
       value: function update() {
-        queueWatcher(this); //this.get(); // 重新渲染
+        if (this.lazy) {
+          this.dirty = true;
+        } else {
+          queueWatcher(this); //this.get(); // 重新渲染
+        }
       }
     }, {
       key: "run",
@@ -429,7 +464,8 @@
   }();
 
   function flushScheduleQueue() {
-    var flushQueue = queue.slice(0);
+    var flushQueue = queue.slice(0); // 对数组的拷贝
+
     queue.length = 0;
     pending = true;
     has = {};
@@ -464,7 +500,7 @@
     });
   }
 
-  var timerFunc;
+  var timerFunc; // 这里就是做了兼容性的处理
 
   if (Promise) {
     timerFunc = function timerFunc() {
@@ -592,13 +628,22 @@
 
     };
 
-    var watcher = new Watcher(vm, updateComponent, true);
-    console.log(watcher); // 2.根据虚拟DOM产生真实DOM 
+    new Watcher(vm, updateComponent, true); // 2.根据虚拟DOM产生真实DOM 
     // 3.插入到el元素中
   } // vue核心流程 1） 创造了响应式数据  2） 模板转换成ast语法树  
   // 3) 将ast语法树转换了render函数 4) 后续每次数据更新可以只执行render函数 (无需再次执行ast转化的过程)
   // render函数会去产生虚拟节点（使用响应式数据）
-  // 根据生成的虚拟节点创造真实的DOM
+  // 根据生成的虚拟节点创造真实的DOM、
+
+  function callHook(vm, hook) {
+    var handlers = vm.$options[hook];
+
+    if (handlers) {
+      handlers.forEach(function (handler) {
+        return handler.call(vm);
+      });
+    }
+  }
 
   var oldArrayProto = Array.prototype;
   var newArrayProto = Object.create(oldArrayProto);
@@ -715,6 +760,10 @@
     if (opts.data) {
       initData(vm);
     }
+
+    if (opts.computed) {
+      initComputed(vm);
+    }
   }
 
   function proxy(vm, target, key) {
@@ -740,11 +789,102 @@
     }
   }
 
+  function initComputed(vm) {
+    var computed = vm.$options.computed;
+    var watchers = vm._computedWatchers = {};
+
+    for (var key in computed) {
+      var userDef = computed[key]; //需要监控计算属性中get的变化
+
+      var fn = typeof userDef === 'function' ? userDef : userDef.get; //如果直接执行new Wather 默认就会执行fn 将属性和watcher对应起来
+
+      watchers[key] = new Watcher(vm, fn, {
+        lazy: true
+      });
+      defineComputed(vm, key, userDef);
+    }
+  }
+
+  function defineComputed(vm, key, userDef) {
+    var setter = userDef.set || function () {};
+
+    Object.defineProperty(vm, key, {
+      get: createComputedGetter(key),
+      set: setter
+    });
+  } // 计算属性自己不回去收集依赖 只会让自己的属性去收集依赖
+
+
+  function createComputedGetter(key) {
+    return function () {
+      var watcher = this._computedWatchers[key];
+
+      if (watcher.dirty) {
+        watcher.evaluate();
+      }
+
+      if (Dep.target) {
+        watcher.depend();
+      }
+
+      return watcher.value;
+    };
+  }
+
+  var strats = {};
+  var LIFECYCLE = ['beforeCreate', 'created'];
+  LIFECYCLE.forEach(function (hook) {
+    strats[hook] = function (p, c) {
+      //  {} {created:function(){}}   => {created:[fn]}
+      // {created:[fn]}  {created:function(){}} => {created:[fn,fn]}
+      if (c) {
+        // 如果儿子有 父亲有   让父亲和儿子拼在一起
+        if (p) {
+          return p.concat(c);
+        } else {
+          return [c]; // 儿子有父亲没有 ，则将儿子包装成数组
+        }
+      } else {
+        return p; // 如果儿子没有则用父亲即可
+      }
+    };
+  });
+  function mergeOptions(parent, child) {
+    var options = {};
+
+    for (var key in parent) {
+      // 循环老的  {}
+      mergeField(key);
+    }
+
+    for (var _key in child) {
+      // 循环老的   {a:1}
+      if (!parent.hasOwnProperty(_key)) {
+        mergeField(_key);
+      }
+    }
+
+    function mergeField(key) {
+      // 策略模式 用策略模式减少if /else
+      if (strats[key]) {
+        options[key] = strats[key](parent[key], child[key]);
+      } else {
+        // 如果不在策略中则以儿子为主
+        options[key] = child[key] || parent[key]; // 优先采用儿子，在采用父亲
+      }
+    }
+
+    return options;
+  }
+
   function initMixin(Vue) {
     Vue.prototype._init = function (options) {
-      var vm = this;
-      vm.$options = options;
+      var vm = this; // 全局的指令都会挂载到实例上
+
+      vm.$options = mergeOptions(this.constructor.options, options);
+      callHook(vm, 'beforeCreate');
       initState(vm);
+      callHook(vm, 'created');
 
       if (options.el) {
         vm.$mount(options.el);
@@ -775,48 +915,6 @@
 
       mountComponent(vm, el);
     };
-  }
-
-  var LIFECYCLE = ['beforeCreate', 'created'];
-  LIFECYCLE.forEach(function (hook) {
-    //  {} {created:function(){}}   => {created:[fn]}
-    // {created:[fn]}  {created:function(){}} => {created:[fn,fn]}
-    starts[hook] = function (p, c) {
-      if (c) {
-        if (p) {
-          return p.concat(c);
-        } else {
-          return [c];
-        }
-      } else {
-        return p; // 如果儿子没有则用父亲即可
-      }
-    };
-  });
-  function mergeOptions(parent, child) {
-    var options = {};
-
-    for (var key in parent) {
-      mergeField(key);
-    }
-
-    for (var _key in child) {
-      if (!child.hasOwnProperty(_key)) {
-        mergeField(_key);
-      }
-    }
-
-    function mergeField(key) {
-      //策略模式
-      if (starts[key]) {
-        options[key] = starts[key](parent[key], child[key]);
-      } else {
-        //如果不在策略中则以儿子为主
-        options[key] = child[key] || parent[key];
-      }
-    }
-
-    return options;
   }
 
   function initGlobalAPI(Vue) {

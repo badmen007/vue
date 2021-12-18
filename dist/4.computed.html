@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <div id="app" >
+        {{fullname}} {{fullname}} {{fullname}}
+    </div>
+    <script src="vue.js"></script>
+    <!-- <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.14/vue.js"></script> -->
+    <script>
+        let vm = new Vue({
+            el: '#app',
+            data: {
+                firstname: 'xz',
+                lastname: '二哈',
+            },
+            //计算属性就是 只有当依赖的值发生改变的时候 才会走
+            //当模板中没有用到的话  是不执行的
+            computed: {
+                fullname() {
+                    console.log('run');
+                    return this.firstname + this.lastname;
+                }
+                // fullname:{
+                //     get() {
+                //         return this.firstname + this.lastname;
+                //     },
+                //     set(newVal) {
+                //         console.log(newVal)
+                //     }
+                // }
+            }
+        })
+
+        setTimeout(() => {
+            vm.firstname = '红'
+        },1000)
+    </script>
+</body>
+
+</html>

@@ -1,4 +1,4 @@
-import Dep from "./dep";
+import Dep, { popTarget, pushTarget } from "./dep";
 
 let id = 0;
 
@@ -7,14 +7,25 @@ class Watcher {
         this.id = id++;
         this.renderWatcher = options;
         this.getter = fn;
+        this.vm = vm;
         this.deps = [];
         this.depsId = new Set();
-        this.get();
+        this.lazy = options.lazy;
+        this.dirty = this.lazy;
+
+        this.value = this.lazy ? undefined :  this.get();
+    }
+
+    evaluate(){
+        this.value = this.get();
+        this.dirty = false;
     }
 
     get() {
-        Dep.target = this;
-        this.getter();
+        pushTarget(this);
+        let value = this.getter.call(this.vm); // 为了保证this的指向
+        popTarget();
+        return value;
     }
 
     addDep(dep){
@@ -26,10 +37,21 @@ class Watcher {
         }
 
     }
+    // 让属性去收集watcher
+    depend() {
+        let i = this.deps.length;
+        while(i--) {
+            this.deps[i].depend();
+        }
+    }
 
     update(){
-        queueWatcher(this);
-        //this.get(); // 重新渲染
+        if(this.lazy) {
+            this.dirty = true;
+        }else{
+            queueWatcher(this);
+            //this.get(); // 重新渲染
+        }
     }
 
     run() {
@@ -39,7 +61,7 @@ class Watcher {
 }
 
 function flushScheduleQueue() {
-    let flushQueue = queue.slice(0);
+    let flushQueue = queue.slice(0); // 对数组的拷贝
     queue.length = 0;
     pending = true;
     has = {};
@@ -70,6 +92,7 @@ function flushCallbacks() {
 }
 
 let timerFunc;
+// 这里就是做了兼容性的处理
 if(Promise) {
     timerFunc = () => {
         Promise.resolve().then(flushCallbacks);
