@@ -53,8 +53,8 @@ function gen(node){
 
 }
 
-function genChildren(children){
-    return children.map(child => gen(child)).join(',');
+function genChildren(children) {
+    return children.map(child => gen(child)).join(',')
 }
 
 
@@ -73,7 +73,6 @@ export function compilerToFunction(template){
     
     //将template转化成ast语法树
     let ast = parseHTML(template);
-
     let code = codegen(ast);
     code = `with(this){return ${code}}`;
     let render = new Function(code); // 根据代码生成render函数

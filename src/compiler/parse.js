@@ -36,7 +36,7 @@ export function parseHTML(html){
         }
         if(currentParent){  // 父亲要记住儿子 儿子也要记住父亲
             node.parent = currentParent;
-            currentParent.children = node;
+            currentParent.children.push(node);
         }
         stack.push(node);
         currentParent = node;
@@ -48,7 +48,7 @@ export function parseHTML(html){
     }
 
     function chars(text) {
-        text = text.replace(/\s/g, ' ');
+        text = text.replace(/\s/g, '');
         text && currentParent.children.push({
             type:TEXT_TYPE,
             text,
