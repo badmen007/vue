@@ -106,5 +106,4 @@ export function initStateMixin(Vue) {
 
         new Watcher(this, exprOrFn, {user: true}, cb);
     }
-
 }

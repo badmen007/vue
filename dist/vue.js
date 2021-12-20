@@ -315,6 +315,10 @@
     return render;
   }
 
+  var isReservedTag = function isReservedTag(tag) {
+    return ['a', 'div', 'p', 'button', 'ul', 'li', 'span'].includes(tag);
+  };
+
   function createElementVNode(vm, tag, data) {
     if (data == null) {
       data = {};
@@ -330,20 +334,48 @@
       children[_key - 3] = arguments[_key];
     }
 
-    return vnode(vm, tag, key, data, children);
+    if (isReservedTag(tag)) {
+      return vnode(vm, tag, key, data, children);
+    } else {
+      // 创造一个组件的虚拟节点  (包含组件的构造函数)
+      var Ctor = vm.$options.components[tag]; // 组件的构造函数
+      // Ctor就是组件的定义 可能是一个Sub类 还有可能是组件的obj选项
+
+      return createComponentVnode(vm, tag, key, data, children, Ctor);
+    }
   }
+
+  function createComponentVnode(vm, tag, key, data, children, Ctor) {
+    if (_typeof(Ctor) === 'object') {
+      Ctor = vm.$options._base.extend(Ctor); // Ctor = Vue.extend(Ctor)
+    }
+
+    data.hook = {
+      init: function init(vnode) {
+        // 稍后创造真实节点的时候 如果是组件则调用此init方法
+        // 保存组件的实例到虚拟节点上
+        var instance = vnode.componentInstance = new vnode.componentOptions.Ctor();
+        instance.$mount(); // instance.$el
+      }
+    };
+    return vnode(vm, tag, key, data, children, null, {
+      Ctor: Ctor
+    });
+  }
+
   function createTextVNode(vm, text) {
     return vnode(vm, undefined, undefined, undefined, undefined, text);
   }
 
-  function vnode(vm, tag, key, data, children, text) {
+  function vnode(vm, tag, key, data, children, text, componentOptions) {
     return {
       vm: vm,
       tag: tag,
       key: key,
       data: data,
       children: children,
-      text: text // ....
+      text: text,
+      componentOptions: componentOptions // ....
 
     };
   }
@@ -558,6 +590,18 @@
     }
   }
 
+  function createComponent(vnode) {
+    var i = vnode.data;
+
+    if ((i = i.hook) && (i = i.init)) {
+      i(vnode); // 初始化组件
+    }
+
+    if (vnode.componentInstance) {
+      return true; // 说明是组件
+    }
+  }
+
   function createElm(vnode) {
     var tag = vnode.tag,
         data = vnode.data,
@@ -566,6 +610,11 @@
 
     if (typeof tag === 'string') {
       // 标签
+      //创建真实节点要区分是组件还是元素
+      if (createComponent(vnode)) {
+        return vnode.componentInstance.$el;
+      }
+
       vnode.el = document.createElement(tag); // 这里将真实节点和虚拟节点对应起来，后续如果修改属性了
 
       patchProps(vnode.el, {}, data);
@@ -610,7 +659,12 @@
     }
   }
   function patch(oldVnode, vnode) {
-    // 写的是初渲染流程 判断是不是第一次渲染
+    //这就是组件的挂载
+    if (!oldVnode) {
+      return createElm(vnode);
+    } // 写的是初渲染流程 判断是不是第一次渲染
+
+
     var isRealElement = oldVnode.nodeType;
 
     if (isRealElement) {
@@ -790,9 +844,16 @@
     Vue.prototype._update = function (vnode) {
       // 将vnode转化成真实dom
       var vm = this;
-      var el = vm.$el; // patch既有初始化的功能  又有更新 
+      var el = vm.$el;
+      var prevVnode = vm._vnode; // 用于判断是不是第一次
 
-      vm.$el = patch(el, vnode);
+      vm._vnode = vnode; // 把第一次产生的虚拟节点保存到_vnode上
+
+      if (prevVnode) {
+        vm.$el = patch(prevVnode, vnode);
+      } else {
+        vm.$el = patch(el, vnode); // patch既有初始化的功能  又有更新 
+      }
     }; // _c('div',{},...children)
 
 
@@ -1106,6 +1167,19 @@
       }
     };
   });
+
+  strats.components = function (parentVal, childVal) {
+    var res = Object.create(parentVal);
+
+    if (childVal) {
+      for (var key in childVal) {
+        res[key] = childVal[key]; // 返回的是构造的对象 可以拿到父亲原型上的属性，并且将儿子的都拷贝到自己身上
+      }
+    }
+
+    return res;
+  };
+
   function mergeOptions(parent, child) {
     var options = {};
 
@@ -1151,38 +1225,76 @@
     Vue.prototype.$mount = function (el) {
       var vm = this;
       el = document.querySelector(el);
-      var opts = vm.$options;
+      var ops = vm.$options;
 
-      if (!opts.render) {
-        var template;
+      if (!ops.render) {
+        // 先进行查找有没有render函数 
+        var template; // 没有render看一下是否写了tempate, 没写template采用外部的template
 
-        if (!opts.template && el) {
+        if (!ops.template && el) {
+          // 没有写模板 但是写了el
           template = el.outerHTML;
         } else {
-          if (el) {
-            template = el.template;
-          }
-        }
+          template = ops.template; // 如果有el 则采用模板的内容
+        } // 写了temlate 就用 写了的template
 
-        if (template && el) {
+
+        if (template) {
+          // 只要有模板就挂载
+          // 这里需要对模板进行编译 
           var render = compilerToFunction(template);
-          opts.render = render;
+          ops.render = render; // jsx 最终会被编译成h('xxx')
         }
       }
 
-      mountComponent(vm, el);
+      mountComponent(vm, el); // 组件的挂载  
+      // 最终就可以获取render方法
+      // script 标签引用的vue.global.js 这个编译过程是在浏览器运行的
+      // runtime是不包含模板编译的, 整个编译是打包的时候通过loader来转义.vue文件的, 用runtime的时候不能使用template
     };
   }
 
   function initGlobalAPI(Vue) {
-    Vue.options = {};
+    Vue.options = {
+      _base: Vue
+    };
 
     Vue.mixin = function mixin(mixin) {
       this.options = mergeOptions(this.options, mixin); // 就是属性的合并
 
       return this;
+    }; // 可以手动创造组件进行挂载
+
+
+    Vue.extend = function (options) {
+      // 就是实现根据用户的参数 返回一个构造函数而已
+      function Sub() {
+        var options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+
+        // 最终使用一个组件 就是new一个实例
+        this._init(options); // 就是默认对子类进行初始化操作
+
+      }
+
+      Sub.prototype = Object.create(Vue.prototype); // Sub.prototype.__proto__ === Vue.prototype
+
+      Sub.prototype.constructor = Sub; // 希望将用户的传递的参数 和全局的Vue.options来合并
+
+      Sub.options = mergeOptions(Vue.options, options); // 保存用户传递的选项
+
+      return Sub;
+    };
+
+    Vue.options.components = {}; // 全局的指令 Vue.otpions.directives
+
+    Vue.component = function (id, definition) {
+      // 如果definition已经是一个函数了 说明用户自己调用了Vue.extend
+      definition = typeof definition === 'function' ? definition : Vue.extend(definition);
+      Vue.options.components[id] = definition;
     };
   }
+
+  // import { createElm, patch } from './vdom/patch';
 
   function Vue(options) {
     this._init(options);
@@ -1192,30 +1304,6 @@
   initLifeCycle(Vue);
   initGlobalAPI(Vue);
   initStateMixin(Vue); //实现了nextTick $watch
-  //--------------------为了观察前后的虚拟节点  测试的
-
-  var render1 = compilerToFunction("<ul style=\"color:red\">\n    <li key='a'>a</li>\n    <li key='b'>b</li>\n    <li key='c'>c</li>\n    <li key='d'>d</li>\n</ul>");
-  var vm1 = new Vue({
-    data: {
-      name: 'xz'
-    }
-  });
-  var prevVnode = render1.call(vm1);
-  var el = createElm(prevVnode);
-  document.body.appendChild(el);
-  var render2 = compilerToFunction("<ul style=\"color:blue\">\n    <li key='b'>b</li>\n    <li key='m'>m</li>\n    <li key='a'>a</li>\n    <li key='p'>p</li>\n    <li key='c'>c</li>\n    <li key='q'>q</li>\n</ul>");
-  var vm2 = new Vue({
-    data: {
-      name: '二哈'
-    }
-  });
-  var nextVnode = render2.call(vm2); //直接将新的节点替换掉老的节点  不是直接替换 是比较两个人的区别之后再替换
-  //diff算法是一个平级比较的过程 父亲和父亲比 儿子和儿子比较
-
-  setTimeout(function () {
-    patch(prevVnode, nextVnode); // let newEl = createElm(nextVnode);
-    // el.parentNode.replaceChild(newEl,el);
-  }, 1000);
 
   return Vue;
 

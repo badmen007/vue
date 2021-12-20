@@ -8,9 +8,13 @@ export function initLifeCycle(Vue){
     Vue.prototype._update = function(vnode){ // 将vnode转化成真实dom
         const vm = this;
         const el = vm.$el;
-
-        // patch既有初始化的功能  又有更新 
-        vm.$el = patch(el,vnode);
+        const prevVnode = vm._vnode; // 用于判断是不是第一次
+        vm._vnode = vnode;  // 把第一次产生的虚拟节点保存到_vnode上
+        if(prevVnode) {
+            vm.$el = patch(prevVnode, vnode);
+        } else {
+            vm.$el = patch(el,vnode);  // patch既有初始化的功能  又有更新 
+        }
     }
 
     // _c('div',{},...children)
@@ -34,9 +38,7 @@ export function initLifeCycle(Vue){
 
 export function mountComponent(vm,el){ // 这里的el 是通过querySelector处理过的
     vm.$el = el;
-
     // 1.调用render方法产生虚拟节点 虚拟DOM
-    
     const updateComponent = () => {
         vm._update(vm._render()) // vm.$options.render() 虚拟节点
     }

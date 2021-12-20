@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <div id="app" >
+        <my-button></my-button>
+        <my-button></my-button>
+    </div>
+    <div id="root"></div>
+    <script src="vue.js"></script>
+    <!-- <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.14/vue.js"></script> -->
+    <script>
+
+        Vue.component('my-button',Vue.extend({
+            template: '<button>全局button</button>'
+        }))
+        let Sub = Vue.extend({
+            template: '<button>子组件 <my-button></my-button></button>',
+            components:{
+                'my-button': {
+                    template: '<button>子组件自己生命的button</button>'
+                }
+            }
+        })  
+        
+        new Sub().$mount('#root')
+
+        
+        // const vm = new Vue({
+        //     el:"#app",
+        //     data() {
+        //         return {
+        //             name: 'xz'
+        //         }
+        //     },
+        //     components: {
+        //         'my-button': Vue.extend({
+        //             template: '<button>innner Button</button>'
+        //         })
+        //     }
+        // })
+    </script>
+</body>
+</html>

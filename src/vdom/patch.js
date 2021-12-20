@@ -1,7 +1,25 @@
 import {isSameVnode} from './index'
+
+function createComponent(vnode) {
+    let i = vnode.data;
+    if((i = i.hook) && (i = i.init)) {
+        i(vnode);  // 初始化组件
+    }
+    if(vnode.componentInstance){
+        return true; // 说明是组件
+    }
+}
+
+
 export function createElm(vnode){
     let {tag,data,children,text} = vnode;
     if(typeof tag === 'string'){ // 标签
+         
+        //创建真实节点要区分是组件还是元素
+        if(createComponent(vnode)){
+            return vnode.componentInstance.$el
+        }
+
         vnode.el =  document.createElement(tag); // 这里将真实节点和虚拟节点对应起来，后续如果修改属性了
         patchProps(vnode.el,{},data);
         children.forEach(child => {
@@ -13,7 +31,6 @@ export function createElm(vnode){
     return vnode.el
 }
 export function patchProps(el,oldProps={},props={}){
-
     //老的属性中有 新的没有 就要删除老的 老的中有的样式 新的中没有的样式
     let oldStyles = oldProps.style || {};  
     let newStyles = props.style || {};
@@ -23,7 +40,6 @@ export function patchProps(el,oldProps={},props={}){
             el.style[key] = ''
         }
     }
-
 
     for(let key in oldProps) { // 老的中有的属性  但是新的中没有属性
         if(!props[key]){
@@ -42,6 +58,12 @@ export function patchProps(el,oldProps={},props={}){
     }
 }
 export function patch(oldVnode,vnode){
+
+    //这就是组件的挂载
+    if(!oldVnode) {
+        return createElm(vnode);
+    }
+
     // 写的是初渲染流程 判断是不是第一次渲染
     const isRealElement = oldVnode.nodeType;
     if(isRealElement){   // 初次渲染的时候  
@@ -95,6 +117,7 @@ function patchVnode(oldVnode, vnode) {
     }else if(newChildren.length > 0){ // 老的中没有但是新的中有
         mountChildren(el, newChildren);
     }  
+
     return el; 
 }
 
@@ -204,6 +227,5 @@ function updateChildren(el, oldChildren, newChildren){
             }
         }
     }
-
 
 }
